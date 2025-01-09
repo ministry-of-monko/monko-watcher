@@ -1,4 +1,4 @@
-# Go-Monko
+# Monko Watcher
 
 ## Setup
 Copy `secrets.json.example` to `secrets.json` and fill in with the relevant information. The Discord Bot must have permission to send links.
