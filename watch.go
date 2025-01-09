@@ -11,6 +11,7 @@ import (
 func main() {
 
 	watcher := internal.NewWatcher()
+	blockAnalyzer := internal.NewBlockAnalyzer(watcher.AssetID)
 
 	status, err := watcher.AlgodClient.Status().Do(context.Background())
 	if err != nil {
@@ -18,10 +19,6 @@ func main() {
 	}
 
 	round := status.LastRound
-
-	blockAnalyzer := internal.NewBlockAnalyzer(watcher.AssetID)
-
-	fmt.Printf("%v", watcher)
 
 	for {
 		_, err := watcher.AlgodClient.StatusAfterBlock(round).Do(context.Background())
