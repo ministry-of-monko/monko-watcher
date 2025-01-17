@@ -11,25 +11,32 @@ import (
 func main() {
 
 	watcher := internal.NewWatcher()
-	blockAnalyzer := internal.NewBlockAnalyzer(watcher.AssetID)
+	blockAnalyzer := internal.NewBlockAnalyzer(watcher.Config.Asset.ID)
 
 	status, err := watcher.AlgodClient.Status().Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
 
+	start := status.LastRound
 	round := status.LastRound
 
 	for {
+
+		watcher.CalcPrices(start, round)
+
 		_, err := watcher.AlgodClient.StatusAfterBlock(round).Do(context.Background())
 		if err != nil {
 			panic(err)
 		}
+
 		fmt.Printf("Looking at round %d\n", round)
+
 		info, err := watcher.AlgodClient.Block(round).Do(context.Background())
 		if err != nil {
 			panic(err)
 		}
+
 		reports := blockAnalyzer.AnalyzeBlock(info)
 		embeds := []*discordgo.MessageEmbed{}
 

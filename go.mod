@@ -7,6 +7,8 @@ require (
 	github.com/bwmarrin/discordgo v0.28.1
 )
 
+require gopkg.in/yaml.v2 v2.4.0 // indirect
+
 require (
 	github.com/algorand/go-codec/codec v1.1.10 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
