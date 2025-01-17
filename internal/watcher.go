@@ -15,6 +15,11 @@ import (
 	"golang.org/x/text/message"
 )
 
+const (
+	USDCLPAddress = "2PIFZW53RHCSFSYMCFUBW4XOCXOMB7XOYQSQ6KGT3KVGJTL4HM6COZRNMM"
+	USDCAssetID   = 31566704
+)
+
 type Watcher struct {
 	AssetID   uint64
 	AssetName string
@@ -23,18 +28,24 @@ type Watcher struct {
 	AlgodClient *algod.Client
 	Bot         *discordgo.Session
 
+	PrimaryAlgoLPAddress string
+	AssetPrice           float64
+	AlgoPrice            float64
+
 	AssetInfoMap map[uint64]AssetInfo
 	Channels     []string
 }
 
 type Secrets struct {
-	DiscordBotToken string
-	AlgodAddress    string
-	AlgodToken      string
-	AssetID         uint64
-	AssetName       string
-	Limit           float64
-	Channels        []string
+	DiscordBotToken      string
+	AlgodAddress         string
+	AlgodToken           string
+	PrimaryAlgoLPAddress string
+	USDCLPAddress        string
+	AssetID              uint64
+	AssetName            string
+	Limit                float64
+	Channels             []string
 }
 
 type AssetInfo struct {
@@ -60,10 +71,11 @@ func NewWatcher() *Watcher {
 	}
 
 	watcher := &Watcher{
-		AssetID:   secrets.AssetID,
-		AssetName: secrets.AssetName,
-		Limit:     secrets.Limit,
-		Channels:  secrets.Channels,
+		AssetID:              secrets.AssetID,
+		AssetName:            secrets.AssetName,
+		Limit:                secrets.Limit,
+		PrimaryAlgoLPAddress: secrets.PrimaryAlgoLPAddress,
+		Channels:             secrets.Channels,
 		AssetInfoMap: map[uint64]AssetInfo{
 			0: {
 				AssetID:   0,
@@ -134,6 +146,7 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 			receiverURL := fmt.Sprintf("https://allo.info/account/%s", receiver)
 
 			output.WriteString(fmt.Sprintf("%s sent %s %s to %s", abbreviatedSender, w.AssetName, formatNumber(total), receiver))
+
 			fmt.Printf("%s\n", output.String())
 
 			if total > w.Limit {
@@ -251,6 +264,44 @@ func (w *Watcher) SendMessages(messages []*discordgo.MessageEmbed) {
 			w.Bot.ChannelMessageSendEmbed(channel, message)
 		}
 	}
+}
+
+func (w *Watcher) CalcAssetPrice() {
+	accountInfo, err := w.AlgodClient.AccountInformation(w.PrimaryAlgoLPAddress).Do(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	algoAmount := accountInfo.AmountWithoutPendingRewards
+
+	assetAmount, err := w.AlgodClient.AccountAssetInformation(w.PrimaryAlgoLPAddress, w.AssetID).Do(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	assetInfo := w.GetAssetInfo(w.AssetID)
+
+	assetAmountFloat := float64(assetAmount.AssetHolding.Amount) / math.Pow10(int(assetInfo.Decimals))
+	algoAmountFloat := float64(algoAmount) / math.Pow10(6)
+
+	w.AssetPrice = algoAmountFloat / assetAmountFloat
+}
+
+func (w *Watcher) CalcAlgoPrice() {
+	accountInfo, err := w.AlgodClient.AccountInformation(USDCLPAddress).Do(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	algoAmount := accountInfo.AmountWithoutPendingRewards
+
+	assetAmount, err := w.AlgodClient.AccountAssetInformation(USDCLPAddress, USDCAssetID).Do(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	assetAmountFloat := float64(assetAmount.AssetHolding.Amount) / math.Pow10(6)
+	algoAmountFloat := float64(algoAmount) / math.Pow10(6)
+
+	w.AlgoPrice = assetAmountFloat / algoAmountFloat
 }
 
 func formatNumber(num float64) string {
