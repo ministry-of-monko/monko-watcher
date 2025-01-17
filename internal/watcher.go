@@ -132,7 +132,9 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 			abbreviatedReceiver := fmt.Sprintf("%s...%s", receiver[:4], receiver[len(receiver)-4:])
 			receiverURL := fmt.Sprintf("https://allo.info/account/%s", receiver)
 
-			output.WriteString(fmt.Sprintf("%s sent %s %s to %s", abbreviatedSender, w.Config.Asset.Name, formatNumber(total), receiver))
+			output.WriteString(fmt.Sprintf("[%s](%s) sent %s %s to [%s](%s)", abbreviatedSender, senderURL, formatNumber(total), w.Config.Asset.Name, abbreviatedReceiver, receiverURL))
+			output.WriteString(fmt.Sprintf("\n\nAlgo Value: %s", formatNumber(total*w.AssetPrice)))
+			output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
 
 			fmt.Printf("%s\n", output.String())
 
@@ -141,7 +143,7 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 				thumb := w.GetEmbedThumbnail(TransferAction, total)
 				return &discordgo.MessageEmbed{
 					Title:       fmt.Sprintf("%s Transfer", w.Config.Asset.Name),
-					Description: fmt.Sprintf("[%s](%s) sent %s %s to [%s](%s)", abbreviatedSender, senderURL, formatNumber(total), w.Config.Asset.Name, abbreviatedReceiver, receiverURL),
+					Description: output.String(),
 					Thumbnail:   thumb,
 					Type:        "rich",
 				}
@@ -176,8 +178,14 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 					op = "SOLD"
 					action = SellAction
 				}
-				output.WriteString(fmt.Sprintf("[%s](%s) %s %s %s for %s %s", abbreviatedSender, senderURL,
+				output.WriteString(fmt.Sprintf("[%s](%s) %s %s %s for %s %s\n", abbreviatedSender, senderURL,
 					op, formatNumber(total), w.Config.Asset.Name, formatNumber(math.Abs(float64(assetAmount)/math.Pow10(int(info.Decimals)))), info.AssetName))
+
+				if assetID != 0 {
+					output.WriteString(fmt.Sprintf("\nAlgo Value: %s", formatNumber(total*w.AssetPrice)))
+				}
+
+				output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
 			}
 
 			fmt.Printf("%s\n", output.String())
