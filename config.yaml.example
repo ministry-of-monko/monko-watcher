@@ -1,0 +1,40 @@
+discord:
+  token: "<your-bot-token>" 
+  channels:
+    - "<channel-id-1>" 
+    - "<channel-id-2>" 
+
+
+algod:
+  address: "http://192.168.1.233:9876"
+  token: ""
+
+
+asset:
+  id: 2494786278
+  name: "Monko"
+  decimals: 6
+  primary-algo-lp-address: "VBZKJBZ327JB6KYCEDTJU5GORANNRLP6XVGVDXPBIP34IDVLELUEWDVE3A"
+  filter-limit: 0
+
+
+image:
+  size: 50
+  transfer-url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-monk.png&w=2048&q=75"
+  liquidity-add-url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-smart.png&w=2048&q=75"
+  liquidity-remove-url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-yell.png&w=2048&q=75"
+  buy: 
+    - limit: 0
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-be.png&w=2048&q=75"
+    - limit: 100
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-joy.png&w=2048&q=75"
+    - limit: 1000
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-soothe.png&w=2048&q=75"
+
+  sell:
+    - limit: 0
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-sad.png&w=2048&q=75"
+    - limit: 100
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-nooo.png&w=2048&q=75"
+    - limit: 1000
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-goblin-imposter.png&w=2048&q=75"

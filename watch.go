@@ -11,7 +11,7 @@ import (
 func main() {
 
 	watcher := internal.NewWatcher()
-	blockAnalyzer := internal.NewBlockAnalyzer(watcher.AssetID)
+	blockAnalyzer := internal.NewBlockAnalyzer(watcher.Config.Asset.ID)
 
 	status, err := watcher.AlgodClient.Status().Do(context.Background())
 	if err != nil {
