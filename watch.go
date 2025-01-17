@@ -24,13 +24,6 @@ func main() {
 	for {
 
 		watcher.CalcPrices(start, round)
-		watcher.CalcAssetPrice()
-		fmt.Printf("Current Asset Price: %.06f\n", watcher.AssetPrice)
-
-		if (start-round)%25 == 0 {
-			watcher.CalcAlgoPrice()
-			fmt.Printf("Current Algo Price: %.03f\n", watcher.AlgoPrice)
-		}
 
 		_, err := watcher.AlgodClient.StatusAfterBlock(round).Do(context.Background())
 		if err != nil {
