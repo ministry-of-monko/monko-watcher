@@ -1,0 +1,56 @@
+discord:
+  token: "<your-bot-token>" 
+  channels:
+    - "<channel-id-1>" 
+    - "<channel-id-2>" 
+
+
+algod:
+  address: "https://mainnet-api.4160.nodely.dev"
+  token: ""
+
+
+# Asset Information for asset to watch
+# Transactions involving less of the asset than filter-limit will not be sent to discord
+# but will still be logged
+asset:
+  id: 2494786278
+  name: "Monko"
+  decimals: 6
+  filter-limit: 0
+
+# Track price of swaps in Algo/USD.  
+# USD is configurable in case it is desired to track in USDT vs USDC
+# Tracking prices uses more network requests, so can be disabled with track: false
+price:
+  track: true
+  block-interval: 1
+  primary-algo-lp-address: "VBZKJBZ327JB6KYCEDTJU5GORANNRLP6XVGVDXPBIP34IDVLELUEWDVE3A"
+  usd:
+    id: 31566704
+    primary-algo-lp-address: "2PIFZW53RHCSFSYMCFUBW4XOCXOMB7XOYQSQ6KGT3KVGJTL4HM6COZRNMM"
+    block-interval: 25
+
+# Images to be sent on Discord Embeds
+# For buy/sell images, you can configure multiple images based on the amount
+# It will use the image for the highest limit that is less than the amount
+image:
+  size: 50
+  transfer-url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-monk.png&w=2048&q=75"
+  liquidity-add-url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-smart.png&w=2048&q=75"
+  liquidity-remove-url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-yell.png&w=2048&q=75"
+  buy: 
+    - limit: 0
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-be.png&w=2048&q=75"
+    - limit: 100
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-joy.png&w=2048&q=75"
+    - limit: 1000
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-soothe.png&w=2048&q=75"
+
+  sell:
+    - limit: 0
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-sad.png&w=2048&q=75"
+    - limit: 100
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-nooo.png&w=2048&q=75"
+    - limit: 1000
+      url: "https://www.bemonko.com/_next/image?url=%2Fapi%2Fmeme%2Ffile%2Fmonko-avatar-goblin-imposter.png&w=2048&q=75"
