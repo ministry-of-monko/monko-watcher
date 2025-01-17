@@ -1,7 +1,7 @@
 # Monko Watcher
 
 ## Setup
-Copy `config.yaml.example` to `config.yaml` and fill in with the relevant information. The Discord Bot must have permission to send links.
+Copy `config.example.yaml` to `config.yaml` and fill in with the relevant information. The Discord Bot must have permission to send links.
 
 ## Running the project
 

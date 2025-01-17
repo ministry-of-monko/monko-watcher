@@ -314,6 +314,7 @@ func (w *Watcher) CalcAssetPrice() {
 	algoAmountFloat := float64(algoAmount) / math.Pow10(6)
 
 	w.AssetPrice = algoAmountFloat / assetAmountFloat
+	fmt.Printf("Asset Price: %.08fȺ\n", w.AssetPrice)
 }
 
 func (w *Watcher) CalcAlgoPrice() {
@@ -334,6 +335,7 @@ func (w *Watcher) CalcAlgoPrice() {
 	algoAmountFloat := float64(algoAmount) / math.Pow10(6)
 
 	w.AlgoPrice = assetAmountFloat / algoAmountFloat
+	fmt.Printf("Algo Price: $%.03f\n", w.AlgoPrice)
 }
 
 func (w *Watcher) GetEmbedThumbnail(action Action, amount float64) *discordgo.MessageEmbedThumbnail {
