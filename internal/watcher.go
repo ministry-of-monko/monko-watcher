@@ -56,7 +56,7 @@ func NewWatcher() *Watcher {
 			assetID: {
 				AssetID:   assetID,
 				AssetName: config.Asset.Name,
-				Decimals:  uint64(config.Asset.Decimals),
+				Decimals:  config.Asset.Decimals,
 			},
 		},
 	}
