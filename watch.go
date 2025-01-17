@@ -23,6 +23,7 @@ func main() {
 
 	for {
 
+		watcher.CalcPrices(start, round)
 		watcher.CalcAssetPrice()
 		fmt.Printf("Current Asset Price: %.06f\n", watcher.AssetPrice)
 

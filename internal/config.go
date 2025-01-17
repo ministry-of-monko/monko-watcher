@@ -11,17 +11,30 @@ type Config struct {
 		Token    string   `yaml:"token"`
 		Channels []string `yaml:"channels"`
 	} `yaml:"discord"`
+
 	Algod struct {
 		Address string `yaml:"address"`
 		Token   string `yaml:"token"`
 	} `yaml:"algod"`
+
 	Asset struct {
-		ID                   uint64  `yaml:"id"`
-		Name                 string  `yaml:"name"`
-		Decimals             uint64  `yaml:"decimals"`
-		PrimaryAlgoLPAddress string  `yaml:"primary-algo-lp-address"`
-		FilterLimit          float64 `yaml:"filter-limit"`
+		ID          uint64  `yaml:"id"`
+		Name        string  `yaml:"name"`
+		Decimals    uint64  `yaml:"decimals"`
+		FilterLimit float64 `yaml:"filter-limit"`
 	} `yaml:"asset"`
+
+	Price struct {
+		Track                bool   `yaml:"track"`
+		BlockInterval        uint64 `yaml:"block-interval"`
+		PrimaryAlgoLpAddress string `yaml:"primary-algo-lp-address"`
+		Usd                  struct {
+			ID                   uint64 `yaml:"id"`
+			PrimaryAlgoLPAddress string `yaml:"primary-algo-lp-address"`
+			BlockInterval        uint64 `yaml:"block-interval"`
+		} `yaml:"usd"`
+	} `yaml:"price"`
+
 	Image struct {
 		Size               int    `yaml:"size"`
 		TransferURL        string `yaml:"transfer-url"`

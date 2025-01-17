@@ -14,8 +14,6 @@ import (
 	"golang.org/x/text/message"
 )
 
-type Action string
-
 type AssetInfo struct {
 	AssetID   uint64
 	AssetName string
@@ -33,17 +31,6 @@ type Watcher struct {
 
 	AssetInfoMap map[uint64]AssetInfo
 }
-
-const (
-	USDCLPAddress = "2PIFZW53RHCSFSYMCFUBW4XOCXOMB7XOYQSQ6KGT3KVGJTL4HM6COZRNMM"
-	USDCAssetID   = 31566704
-
-	TransferAction = Action("transfer")
-	BuyAction      = Action("bought")
-	SellAction     = Action("sold")
-	AddAction      = Action("added")
-	RemoveAction   = Action("removed")
-)
 
 var (
 	p = message.NewPrinter(language.English)
@@ -133,9 +120,10 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 			receiverURL := fmt.Sprintf("https://allo.info/account/%s", receiver)
 
 			output.WriteString(fmt.Sprintf("[%s](%s) sent %s %s to [%s](%s)", abbreviatedSender, senderURL, formatNumber(total), w.Config.Asset.Name, abbreviatedReceiver, receiverURL))
-			output.WriteString(fmt.Sprintf("\n\nAlgo Value: %s", formatNumber(total*w.AssetPrice)))
-			output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
-
+			if w.Config.Price.Track {
+				output.WriteString(fmt.Sprintf("\n\nAlgo Value: %sȺ", formatNumber(total*w.AssetPrice)))
+				output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
+			}
 			fmt.Printf("%s\n", output.String())
 
 			if total > w.Config.Asset.FilterLimit {
@@ -170,7 +158,9 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 					op = "ADDED"
 					action = AddAction
 				}
-				output.WriteString(fmt.Sprintf("[%s](%s) %s %s of liquidity in %s", abbreviatedSender, senderURL, op, formatNumber(total), info.AssetName))
+				output.WriteString(fmt.Sprintf("[%s](%s) %s %s of liquidity in %s\n", abbreviatedSender, senderURL, op, formatNumber(total), info.AssetName))
+				output.WriteString(fmt.Sprintf("\nAlgo Value: %sȺ", formatNumber(total*w.AssetPrice)))
+				output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
 			case false:
 				op := "BOUGHT"
 				action = BuyAction
@@ -181,11 +171,15 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 				output.WriteString(fmt.Sprintf("[%s](%s) %s %s %s for %s %s\n", abbreviatedSender, senderURL,
 					op, formatNumber(total), w.Config.Asset.Name, formatNumber(math.Abs(float64(assetAmount)/math.Pow10(int(info.Decimals)))), info.AssetName))
 
-				if assetID != 0 {
-					output.WriteString(fmt.Sprintf("\nAlgo Value: %s", formatNumber(total*w.AssetPrice)))
-				}
+				if w.Config.Price.Track {
+					if assetID != 0 {
+						output.WriteString(fmt.Sprintf("\nAlgo Value: %sȺ", formatNumber(total*w.AssetPrice)))
+					}
 
-				output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
+					if assetID != w.Config.Price.Usd.ID {
+						output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
+					}
+				}
 			}
 
 			fmt.Printf("%s\n", output.String())
@@ -231,8 +225,19 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 				otherInfo := w.GetAssetInfo(otherAssetID)
 				poolInfo := w.GetAssetInfo(poolID)
 
-				output.WriteString(fmt.Sprintf("[%s](%s) %s %s %s and %s %s of liquidity in %s", abbreviatedSender, senderURL, op, formatNumber(total), w.Config.Asset.Name,
+				output.WriteString(fmt.Sprintf("[%s](%s) %s %s %s and %s %s of liquidity in %s\n", abbreviatedSender, senderURL, op, formatNumber(total), w.Config.Asset.Name,
 					formatNumber(math.Abs(float64(otherAssetAmount)/math.Pow10(int(otherInfo.Decimals)))), otherInfo.AssetName, poolInfo.AssetName))
+
+				if w.Config.Price.Track {
+					if otherInfo.AssetID != 0 {
+						output.WriteString(fmt.Sprintf("\nAlgo Value: %sȺ", formatNumber(total*w.AssetPrice)))
+					}
+
+					if otherInfo.AssetID != w.Config.Price.Usd.ID {
+						output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
+					}
+				}
+
 				fmt.Printf("%s\n", output.String())
 
 				if total > w.Config.Asset.FilterLimit {
@@ -274,15 +279,31 @@ func (w *Watcher) SendMessages(messages []*discordgo.MessageEmbed) {
 	}
 }
 
+func (w *Watcher) CalcPrices(startRound uint64, currentRound uint64) {
+	if !w.Config.Price.Track {
+		return
+	}
+
+	if (currentRound-startRound)%w.Config.Price.BlockInterval == 0 {
+		w.CalcAssetPrice()
+	}
+
+	if (currentRound-startRound)%w.Config.Price.Usd.BlockInterval == 0 {
+		w.CalcAlgoPrice()
+	}
+
+}
+
 func (w *Watcher) CalcAssetPrice() {
-	accountInfo, err := w.AlgodClient.AccountInformation(w.Config.Asset.PrimaryAlgoLPAddress).Do(context.Background())
+	accountInfo, err := w.AlgodClient.AccountInformation(w.Config.Price.PrimaryAlgoLpAddress).Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
 
 	algoAmount := accountInfo.AmountWithoutPendingRewards
 
-	assetAmount, err := w.AlgodClient.AccountAssetInformation(w.Config.Asset.PrimaryAlgoLPAddress, w.Config.Asset.ID).Do(context.Background())
+	assetAmount, err := w.AlgodClient.AccountAssetInformation(w.Config.Price.PrimaryAlgoLpAddress,
+		w.Config.Asset.ID).Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -296,14 +317,15 @@ func (w *Watcher) CalcAssetPrice() {
 }
 
 func (w *Watcher) CalcAlgoPrice() {
-	accountInfo, err := w.AlgodClient.AccountInformation(USDCLPAddress).Do(context.Background())
+	accountInfo, err := w.AlgodClient.AccountInformation(w.Config.Price.Usd.PrimaryAlgoLPAddress).Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
 
 	algoAmount := accountInfo.AmountWithoutPendingRewards
 
-	assetAmount, err := w.AlgodClient.AccountAssetInformation(USDCLPAddress, USDCAssetID).Do(context.Background())
+	assetAmount, err := w.AlgodClient.AccountAssetInformation(w.Config.Price.Usd.PrimaryAlgoLPAddress,
+		w.Config.Price.Usd.ID).Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
