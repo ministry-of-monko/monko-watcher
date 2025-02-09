@@ -1,17 +1,21 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
-	"net/url"
+	"net/http"
 	"strings"
 
+	"algorillas.com/monko/config"
+	"algorillas.com/monko/events"
+	"algorillas.com/monko/utils"
 	"github.com/algorand/go-algorand-sdk/v2/client/v2/algod"
 	"github.com/bwmarrin/discordgo"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type AssetInfo struct {
@@ -21,24 +25,23 @@ type AssetInfo struct {
 }
 
 type Watcher struct {
-	Config Config
+	Config config.Config
 
 	AlgodClient *algod.Client
-	Bot         *discordgo.Session
+	DiscordBot  *discordgo.Session
+	TelegramBot *tgbotapi.BotAPI
 
 	AssetPrice float64
 	AlgoPrice  float64
 
 	AssetInfoMap map[uint64]AssetInfo
-}
 
-var (
-	p = message.NewPrinter(language.English)
-)
+	HolderCount int
+}
 
 func NewWatcher() *Watcher {
 
-	config, err := GetConfigFromFile("config.yaml")
+	config, err := config.GetConfigFromFile("config.yaml")
 	if err != nil {
 		panic(err)
 	}
@@ -61,7 +64,13 @@ func NewWatcher() *Watcher {
 		},
 	}
 
-	watcher.Bot, err = discordgo.New("Bot " + config.Discord.Token)
+	watcher.DiscordBot, err = discordgo.New("Bot " + config.Discord.Token)
+	if err != nil {
+		panic(err)
+	}
+
+	watcher.TelegramBot, err = tgbotapi.NewBotAPI(config.Telegram.Token)
+	watcher.TelegramBot.Debug = true
 	if err != nil {
 		panic(err)
 	}
@@ -96,16 +105,56 @@ func (w *Watcher) GetAssetInfo(assetID uint64) AssetInfo {
 	return assetInfo
 }
 
-func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.MessageEmbed {
+func (w *Watcher) Event(report *AssetReport) events.Event {
 	report.CalculateDeltas()
 	senderDetails := report.Deltas[report.Sender]
 
+	var accountBalace float64
+
+	balanceInfo, err := w.AlgodClient.AccountAssetInformation(report.Sender, w.Config.Asset.ID).Do(context.Background())
+
+	if err != nil {
+		switch strings.Contains(err.Error(), "account asset info not found") {
+		case true:
+			accountBalace = 0
+		default:
+			panic(err)
+		}
+	} else {
+		accountBalace = float64(balanceInfo.AssetHolding.Amount) / math.Pow10(int(w.Config.Asset.Decimals))
+		if accountBalace == 0 {
+			w.HolderCount--
+		}
+	}
+
 	if amt := senderDetails[w.Config.Asset.ID]; amt != 0 {
-		output := strings.Builder{}
-		total := math.Abs(float64(amt) / math.Pow10(6))
-		abbreviatedSender := fmt.Sprintf("%s...%s", report.Sender[:4], report.Sender[len(report.Sender)-4:])
-		senderURL := fmt.Sprintf("https://allo.info/account/%s", report.Sender)
-		var action Action
+
+		total := float64(amt) / math.Pow10(int(w.Config.Asset.Decimals))
+
+		baseEvent := events.BaseEvent{
+			Sender: report.Sender,
+
+			AssetID:   w.Config.Asset.ID,
+			AssetName: w.Config.Asset.Name,
+			Amount:    total,
+			AbsAmount: math.Abs(total),
+
+			AlgoAmount: math.Abs(total) * w.AssetPrice,
+			USDAmount:  math.Abs(total) * w.AssetPrice * w.AlgoPrice,
+			USDAssetID: w.Config.Price.Usd.ID,
+
+			MediaSize: w.Config.Image.Size,
+		}
+
+		var filterAmount float64
+		switch w.Config.Asset.FilterAsset {
+		case "ALGO":
+			filterAmount = baseEvent.AlgoAmount
+		case "USD":
+			filterAmount = baseEvent.USDAmount
+		default:
+			filterAmount = baseEvent.AbsAmount
+		}
 
 		switch len(senderDetails) {
 
@@ -116,25 +165,12 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 				break
 			}
 
-			abbreviatedReceiver := fmt.Sprintf("%s...%s", receiver[:4], receiver[len(receiver)-4:])
-			receiverURL := fmt.Sprintf("https://allo.info/account/%s", receiver)
+			baseEvent.Action = events.TransferAction
+			baseEvent.MediaURL = w.Config.Image.TransferURL
 
-			output.WriteString(fmt.Sprintf("[%s](%s) sent %s %s to [%s](%s)", abbreviatedSender, senderURL, formatNumber(total), w.Config.Asset.Name, abbreviatedReceiver, receiverURL))
-			if w.Config.Price.Track {
-				output.WriteString(fmt.Sprintf("\n\nAlgo Value: %sȺ", formatNumber(total*w.AssetPrice)))
-				output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
-			}
-			fmt.Printf("%s\n", output.String())
-
-			if total > w.Config.Asset.FilterLimit {
-
-				thumb := w.GetEmbedThumbnail(TransferAction, total)
-				return &discordgo.MessageEmbed{
-					Title:       fmt.Sprintf("%s Transfer", w.Config.Asset.Name),
-					Description: output.String(),
-					Thumbnail:   thumb,
-					Type:        "rich",
-				}
+			return events.TransferEvent{
+				BaseEvent: baseEvent,
+				Receiver:  receiver,
 			}
 
 		case 2:
@@ -149,55 +185,94 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 			}
 
 			info := w.GetAssetInfo(assetID)
+			assetTotal := float64(assetAmount) / math.Pow10(int(info.Decimals))
 
-			switch strings.HasPrefix(info.AssetName, "TinymanPool") {
-			case true:
-				op := "REMOVED"
-				action = RemoveAction
-				if amt < 0 {
-					op = "ADDED"
-					action = AddAction
+			if utils.Signum(total) == utils.Signum(assetTotal) {
+				switch total > 0 {
+				case true:
+					baseEvent.Action = events.WithdrawAction
+				case false:
+					baseEvent.Action = events.DepositAction
 				}
-				output.WriteString(fmt.Sprintf("[%s](%s) %s %s of liquidity in %s\n", abbreviatedSender, senderURL, op, formatNumber(total), info.AssetName))
-				output.WriteString(fmt.Sprintf("\nAlgo Value: %sȺ", formatNumber(total*w.AssetPrice)))
-				output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
-			case false:
-				op := "BOUGHT"
-				action = BuyAction
-				if amt < 0 {
-					op = "SOLD"
-					action = SellAction
-				}
-				output.WriteString(fmt.Sprintf("[%s](%s) %s %s %s for %s %s\n", abbreviatedSender, senderURL,
-					op, formatNumber(total), w.Config.Asset.Name, formatNumber(math.Abs(float64(assetAmount)/math.Pow10(int(info.Decimals)))), info.AssetName))
 
-				if w.Config.Price.Track {
-					if assetID != 0 {
-						output.WriteString(fmt.Sprintf("\nAlgo Value: %sȺ", formatNumber(total*w.AssetPrice)))
-					}
+				baseEvent.MediaURL = w.Config.Image.TransferURL
 
-					if assetID != w.Config.Price.Usd.ID {
-						output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
-					}
+				return events.ContractEvent{
+					BaseEvent: baseEvent,
+
+					Group: report.Group,
 				}
 			}
 
-			fmt.Printf("%s\n", output.String())
-			if total > w.Config.Asset.FilterLimit {
-				thumb := w.GetEmbedThumbnail(action, total)
-				groupURL := fmt.Sprintf("https://allo.info/tx/group/%s", url.QueryEscape(report.Group))
+			switch strings.HasPrefix(info.AssetName, "TinymanPool") {
+			case true:
 
-				return &discordgo.MessageEmbed{
-					Title:       fmt.Sprintf("%s Swap", w.Config.Asset.Name),
-					Description: output.String(),
-					URL:         groupURL,
-					Thumbnail:   thumb,
-					Type:        "link",
+				switch amt < 0 {
+				case true:
+					baseEvent.Action = events.AddAction
+				case false:
+					baseEvent.Action = events.RemoveAction
 				}
+
+				baseEvent.MediaURL = w.Config.ImageURL(baseEvent.Action, filterAmount)
+
+				return events.LiquidityEvent{
+					BaseEvent: baseEvent,
+
+					Group: report.Group,
+
+					PoolAssetID:   assetID,
+					PoolAssetName: info.AssetName,
+					PoolAmount:    assetTotal,
+					PoolAbsAmount: math.Abs(assetTotal),
+				}
+
+			case false:
+
+				switch amt < 0 {
+				case true:
+					baseEvent.Action = events.SellAction
+				case false:
+					baseEvent.Action = events.BuyAction
+				}
+
+				baseEvent.MediaURL = w.Config.ImageURL(baseEvent.Action, filterAmount)
+
+				swap := &events.SwapEvent{
+					BaseEvent: baseEvent,
+
+					Group: report.Group,
+
+					ToAssetID:   assetID,
+					ToAssetName: info.AssetName,
+					ToAmount:    assetTotal,
+					ToAbsAmount: math.Abs(assetTotal),
+				}
+
+				if baseEvent.Action == events.BuyAction {
+					newHolder := math.Abs(total-accountBalace) < 0.0001
+
+					if newHolder {
+						w.HolderCount++
+					}
+
+					swap.TelegramBuyInfo = events.TelegramBuyInfo{
+						NewHolder:   newHolder,
+						HolderCount: w.HolderCount,
+						Price:       w.AssetPrice,
+						PriceUSD:    w.AssetPrice * w.AlgoPrice,
+						ChartURL:    w.Config.Asset.ChartURL,
+						WebsiteURL:  w.Config.Asset.Website,
+					}
+
+				}
+
+				return *swap
 			}
 
 		case 3:
 			poolID := uint64(0)
+			poolAmount := int64(0)
 			otherAssetID := uint64(0)
 			otherAssetAmount := int64(0)
 
@@ -208,6 +283,7 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 					switch strings.HasPrefix(info.AssetName, "TinymanPool") || strings.Contains(info.AssetName, "Pact") {
 					case true:
 						poolID = asset
+						poolAmount = aamt
 					default:
 						otherAssetID = asset
 						otherAssetAmount = aamt
@@ -216,67 +292,91 @@ func (w *Watcher) GetDiscordEmbedFromReport(report *AssetReport) *discordgo.Mess
 			}
 
 			if poolID != 0 {
-				op := "REMOVED"
-				action = RemoveAction
-				if amt < 0 {
-					op = "ADDED"
-					action = AddAction
+
+				switch amt < 0 {
+				case true:
+					baseEvent.Action = events.RemoveAction
+				case false:
+					baseEvent.Action = events.AddAction
 				}
+
 				otherInfo := w.GetAssetInfo(otherAssetID)
 				poolInfo := w.GetAssetInfo(poolID)
 
-				output.WriteString(fmt.Sprintf("[%s](%s) %s %s %s and %s %s of liquidity in %s\n", abbreviatedSender, senderURL, op, formatNumber(total), w.Config.Asset.Name,
-					formatNumber(math.Abs(float64(otherAssetAmount)/math.Pow10(int(otherInfo.Decimals)))), otherInfo.AssetName, poolInfo.AssetName))
+				poolTotal := float64(poolAmount) / math.Pow10(int(poolInfo.Decimals))
+				otherTotal := float64(otherAssetAmount) / math.Pow10(int(otherInfo.Decimals))
 
-				if w.Config.Price.Track {
-					if otherInfo.AssetID != 0 {
-						output.WriteString(fmt.Sprintf("\nAlgo Value: %sȺ", formatNumber(total*w.AssetPrice)))
-					}
+				baseEvent.MediaURL = w.Config.ImageURL(baseEvent.Action, filterAmount)
 
-					if otherInfo.AssetID != w.Config.Price.Usd.ID {
-						output.WriteString(fmt.Sprintf("\nUSD Value: $%s", formatNumber(total*w.AssetPrice*w.AlgoPrice)))
-					}
+				return events.LiquidityEvent{
+					BaseEvent: baseEvent,
+
+					Group: report.Group,
+
+					PairAssetID:   otherAssetID,
+					PairAssetName: otherInfo.AssetName,
+					PairAmount:    otherTotal,
+					PairAbsAmount: math.Abs(otherTotal),
+
+					PoolAssetID:   poolID,
+					PoolAssetName: poolInfo.AssetName,
+					PoolAmount:    poolTotal,
+					PoolAbsAmount: math.Abs(poolTotal),
 				}
 
-				fmt.Printf("%s\n", output.String())
-
-				if total > w.Config.Asset.FilterLimit {
-
-					groupURL := fmt.Sprintf("https://allo.info/tx/group/%s", url.QueryEscape(report.Group))
-					thumb := w.GetEmbedThumbnail(action, total)
-
-					return &discordgo.MessageEmbed{
-						Title:       fmt.Sprintf("%s Swap", w.Config.Asset.Name),
-						Description: output.String(),
-						URL:         groupURL,
-						Thumbnail:   thumb,
-						Type:        "link",
-					}
-				}
 			} else {
 				// Debugging purposes
 				deltaOutput, _ := json.MarshalIndent(report.Deltas, "", "  ")
-				output.WriteString(fmt.Sprintf("%s made a complex transaction\n%s\n", report.Sender, string(deltaOutput)))
+				fmt.Printf("%s made a complex transaction\n%s\n", report.Sender, string(deltaOutput))
 			}
 
 		default:
 			// Debugging purposes
 			deltaOutput, _ := json.MarshalIndent(report.Deltas, "", "  ")
-			output.WriteString(fmt.Sprintf("%s made a complex transaction\n%s\n", report.Sender, string(deltaOutput)))
+			fmt.Printf("%s made a complex transaction\n%s\n", report.Sender, string(deltaOutput))
 		}
-
-		fmt.Printf("%s\n", output.String())
 
 	}
 	return nil
 }
 
-func (w *Watcher) SendMessages(messages []*discordgo.MessageEmbed) {
-	for _, channel := range w.Config.Discord.Channels {
-		for _, message := range messages {
-			w.Bot.ChannelMessageSendEmbed(channel, message)
+func (w *Watcher) SendDiscordMessages(events []events.Event) {
+	for _, event := range events {
+		for _, channel := range w.Config.Discord.Channels {
+			w.DiscordBot.ChannelMessageSendEmbed(channel, event.DiscordEmbed())
 		}
 	}
+
+}
+
+func (w *Watcher) SendTelegramMessages(events []events.Event) {
+
+	for _, event := range events {
+		for _, chatID := range w.Config.Telegram.ChatIDs {
+			w.TelegramBot.Send(event.TelegramMessage(chatID))
+		}
+	}
+
+}
+
+func (w *Watcher) ShouldFilterEvent(event events.Event) bool {
+	if event == nil {
+		return true
+	}
+
+	amounts := event.EventAmounts()
+	fmt.Printf("Looking at filtering %v\n", amounts)
+
+	switch w.Config.Asset.FilterAsset {
+	case "ALGO":
+		return amounts.AlgoAmount < w.Config.Asset.FilterLimit
+	case "ASSET":
+		return amounts.AssetAmount < w.Config.Asset.FilterLimit
+	case "USD":
+		return amounts.USDAmount < w.Config.Asset.FilterLimit
+	}
+
+	return true
 }
 
 func (w *Watcher) CalcPrices(startRound uint64, currentRound uint64) {
@@ -338,49 +438,46 @@ func (w *Watcher) CalcAlgoPrice() {
 	fmt.Printf("Algo Price: $%.03f\n", w.AlgoPrice)
 }
 
-func (w *Watcher) GetEmbedThumbnail(action Action, amount float64) *discordgo.MessageEmbedThumbnail {
-	if len(action) == 0 {
-		return nil
-	}
+func (w *Watcher) UpdateHolderCount(startRound uint64, currentRound uint64) {
+	if (currentRound-startRound)%w.Config.Asset.HolderInterval == 0 {
+		url := "https://allo.info/api/v1/graphql/getAssetHoldersCount"
 
-	var url string
-
-	switch action {
-
-	case TransferAction:
-		url = w.Config.Image.TransferURL
-
-	case AddAction:
-		url = w.Config.Image.LiquidityAddURL
-
-	case RemoveAction:
-		url = w.Config.Image.LiquidityRemoveURL
-
-	case BuyAction:
-		for _, possibility := range w.Config.Image.Buy {
-			if amount >= possibility.Limit {
-				url = possibility.URL
-			}
+		var jsonStr = []byte(fmt.Sprintf(`{"id": %d}`, w.Config.Asset.ID))
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		if err != nil {
+			panic(err)
 		}
-	case SellAction:
-		for _, possibility := range w.Config.Image.Sell {
-			if amount >= possibility.Limit {
-				url = possibility.URL
-			}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Referrer", fmt.Sprintf("https://allo.info/asset/%d/holders", w.Config.Asset.ID))
+		req.Header.Set("Referrer-Policy", "unsafe-url")
+		req.Header.Set("Origin", "https://allo.info")
+		req.Header.Set("sec-fetch-mode", "cors")
+		req.Header.Set("sec-fetch-dest", "empty")
+		req.Header.Set("sec-fetch-site", "same-origin")
+		req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			panic(err)
 		}
-	}
+		defer resp.Body.Close()
 
-	if len(url) == 0 {
-		return nil
-	}
+		fmt.Println("response Status:", resp.Status)
+		fmt.Println("response Headers:", resp.Header)
+		body, _ := io.ReadAll(resp.Body)
 
-	return &discordgo.MessageEmbedThumbnail{
-		URL:    url,
-		Width:  w.Config.Image.Size,
-		Height: w.Config.Image.Size,
-	}
-}
+		response := struct {
+			Holders struct {
+				TotalCount int `json:"totalCount"`
+			} `json:"holders"`
+		}{}
 
-func formatNumber(num float64) string {
-	return p.Sprintf("%.2f", num)
+		err = json.Unmarshal(body, &response)
+		if err != nil {
+			panic(err)
+		}
+
+		w.HolderCount = response.Holders.TotalCount
+	}
 }

@@ -5,6 +5,8 @@ WORKDIR /app
 COPY go.mod ./
 COPY go.sum ./
 
+COPY telegram-files ./
+
 RUN go mod download
 
 COPY . .
