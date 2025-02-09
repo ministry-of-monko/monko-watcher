@@ -15,7 +15,13 @@ type Config struct {
 	} `yaml:"discord"`
 
 	Telegram struct {
-		Token   string   `yaml:"token"`
+		Token         string  `yaml:"token"`
+		LargeBuyLimit float64 `yaml:"large-buy-limit"`
+		Videos        struct {
+			LargeBuy       string `yaml:"large-buy"`
+			ExistingHolder string `yaml:"existing-holder"`
+			NewHolder      string `yaml:"new-holder"`
+		} `yaml:"videos"`
 		Actions []string `yaml:"actions"`
 		ChatIDs []int64  `yaml:"chat-ids"`
 	} `yaml:"telegram"`
@@ -29,6 +35,7 @@ type Config struct {
 		ID             uint64  `yaml:"id"`
 		Name           string  `yaml:"name"`
 		Decimals       uint64  `yaml:"decimals"`
+		Tokens         float64 `yaml:"tokens"`
 		FilterLimit    float64 `yaml:"filter-limit"`
 		FilterAsset    string  `yaml:"filter-asset"`
 		HolderInterval uint64  `yaml:"holder-interval"`
@@ -61,18 +68,12 @@ type Config struct {
 			URL   string  `yaml:"url"`
 		} `yaml:"sell"`
 	} `yaml:"image"`
-
-	TelegramVideos struct {
-		NewHolderURL      string `yaml:"new-holder"`
-		ExistingHolderURL string `yaml:"existing-holder"`
-		LargeBuyURL       string `yaml:"large-buy"`
-	} `yaml:"telegram-videos"`
 }
 
-func GetConfigFromFile(path string) (Config, error) {
+func GetConfigFromFile(filePath string) (Config, error) {
 	var config Config
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return config, err
 	}

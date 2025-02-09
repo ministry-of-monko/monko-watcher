@@ -1,8 +1,29 @@
 discord:
   token: "<your-bot-token>" 
+  actions:
+    - "transfer"
+    - "deposit"
+    - "withdraw"
+    - "buy"
+    - "sell"
+    - "add"
+    - "remove"
   channels:
     - "<channel-id-1>" 
     - "<channel-id-2>" 
+
+
+telegram:
+  token: "<your-bot-token>"
+  large-buy-limit: 1000 # IN USD
+  videos:
+    large-buy: "bigbuymp4.mp4" 
+    existing-holder: "ExistingHoldersmp4.mp4"
+    new-holder: "SuperSmp4.mp4"
+  actions: 
+    - "buy"
+  chat-ids: 
+    - 0
 
 
 algod:
@@ -17,7 +38,12 @@ asset:
   id: 2494786278
   name: "Monko"
   decimals: 6
-  filter-limit: 0
+  tokens: 1_000_000_000_000
+  filter-limit: 200
+  filter-asset: "USD"   #  one of ASSET, ALGO, USD
+  chart-url: "https://vestige.fi/asset/2494786278"
+  website: "https://www.bemonko.com"
+
 
 # Track price of swaps in Algo/USD.  
 # USD is configurable in case it is desired to track in USDT vs USDC

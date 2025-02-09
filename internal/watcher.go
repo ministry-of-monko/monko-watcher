@@ -112,19 +112,11 @@ func (w *Watcher) Event(report *AssetReport) events.Event {
 	var accountBalace float64
 
 	balanceInfo, err := w.AlgodClient.AccountAssetInformation(report.Sender, w.Config.Asset.ID).Do(context.Background())
-
-	if err != nil {
-		switch strings.Contains(err.Error(), "account asset info not found") {
-		case true:
-			accountBalace = 0
-		default:
-			panic(err)
-		}
-	} else {
+	switch err != nil {
+	case true:
+		accountBalace = 0
+	case false:
 		accountBalace = float64(balanceInfo.AssetHolding.Amount) / math.Pow10(int(w.Config.Asset.Decimals))
-		if accountBalace == 0 {
-			w.HolderCount--
-		}
 	}
 
 	if amt := senderDetails[w.Config.Asset.ID]; amt != 0 {
@@ -252,17 +244,28 @@ func (w *Watcher) Event(report *AssetReport) events.Event {
 				if baseEvent.Action == events.BuyAction {
 					newHolder := math.Abs(total-accountBalace) < 0.0001
 
-					if newHolder {
-						w.HolderCount++
+					var videoPath string
+
+					switch newHolder {
+					case true:
+						videoPath = w.Config.Telegram.Videos.NewHolder
+					case false:
+						videoPath = w.Config.Telegram.Videos.ExistingHolder
+					}
+
+					if baseEvent.USDAmount >= w.Config.Telegram.LargeBuyLimit {
+						videoPath = w.Config.Telegram.Videos.LargeBuy
 					}
 
 					swap.TelegramBuyInfo = events.TelegramBuyInfo{
-						NewHolder:   newHolder,
-						HolderCount: w.HolderCount,
-						Price:       w.AssetPrice,
-						PriceUSD:    w.AssetPrice * w.AlgoPrice,
-						ChartURL:    w.Config.Asset.ChartURL,
-						WebsiteURL:  w.Config.Asset.Website,
+						NewHolder:         newHolder,
+						HolderCount:       w.HolderCount,
+						Price:             w.AssetPrice,
+						PriceUSD:          w.AssetPrice * w.AlgoPrice,
+						Tokens:            w.Config.Asset.Tokens,
+						ChartURL:          w.Config.Asset.ChartURL,
+						WebsiteURL:        w.Config.Asset.Website,
+						TelegramVideoPath: videoPath,
 					}
 
 				}
@@ -295,9 +298,9 @@ func (w *Watcher) Event(report *AssetReport) events.Event {
 
 				switch amt < 0 {
 				case true:
-					baseEvent.Action = events.RemoveAction
-				case false:
 					baseEvent.Action = events.AddAction
+				case false:
+					baseEvent.Action = events.RemoveAction
 				}
 
 				otherInfo := w.GetAssetInfo(otherAssetID)
@@ -365,7 +368,6 @@ func (w *Watcher) ShouldFilterEvent(event events.Event) bool {
 	}
 
 	amounts := event.EventAmounts()
-	fmt.Printf("Looking at filtering %v\n", amounts)
 
 	switch w.Config.Asset.FilterAsset {
 	case "ALGO":
@@ -439,22 +441,13 @@ func (w *Watcher) CalcAlgoPrice() {
 }
 
 func (w *Watcher) UpdateHolderCount(startRound uint64, currentRound uint64) {
-	if (currentRound-startRound)%w.Config.Asset.HolderInterval == 0 {
-		url := "https://allo.info/api/v1/graphql/getAssetHoldersCount"
-
-		var jsonStr = []byte(fmt.Sprintf(`{"id": %d}`, w.Config.Asset.ID))
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	// Intentionally hard-coded to only look at the holder count every 1333 rounds
+	// This is approximately once per hour.  Do not want to spam the API
+	if (currentRound-startRound)%1333 == 0 {
+		req, err := w.getHolderCountRequest()
 		if err != nil {
 			panic(err)
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Referrer", fmt.Sprintf("https://allo.info/asset/%d/holders", w.Config.Asset.ID))
-		req.Header.Set("Referrer-Policy", "unsafe-url")
-		req.Header.Set("Origin", "https://allo.info")
-		req.Header.Set("sec-fetch-mode", "cors")
-		req.Header.Set("sec-fetch-dest", "empty")
-		req.Header.Set("sec-fetch-site", "same-origin")
-		req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
 
 		client := &http.Client{}
 		resp, err := client.Do(req)
@@ -463,8 +456,6 @@ func (w *Watcher) UpdateHolderCount(startRound uint64, currentRound uint64) {
 		}
 		defer resp.Body.Close()
 
-		fmt.Println("response Status:", resp.Status)
-		fmt.Println("response Headers:", resp.Header)
 		body, _ := io.ReadAll(resp.Body)
 
 		response := struct {
@@ -480,4 +471,24 @@ func (w *Watcher) UpdateHolderCount(startRound uint64, currentRound uint64) {
 
 		w.HolderCount = response.Holders.TotalCount
 	}
+}
+
+func (w *Watcher) getHolderCountRequest() (*http.Request, error) {
+	url := "https://allo.info/api/v1/graphql/getAssetHoldersCount"
+
+	var jsonStr = []byte(fmt.Sprintf(`{"id": %d}`, w.Config.Asset.ID))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Referrer", fmt.Sprintf("https://allo.info/asset/%d/holders", w.Config.Asset.ID))
+	req.Header.Set("Referrer-Policy", "unsafe-url")
+	req.Header.Set("Origin", "https://allo.info")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-site", "same-origin")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
+
+	return req, nil
 }

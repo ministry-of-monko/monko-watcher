@@ -10,12 +10,14 @@ import (
 )
 
 type TelegramBuyInfo struct {
-	NewHolder   bool
-	HolderCount int
-	Price       float64
-	PriceUSD    float64
-	ChartURL    string
-	WebsiteURL  string
+	NewHolder         bool
+	HolderCount       int
+	Price             float64
+	PriceUSD          float64
+	Tokens            float64
+	ChartURL          string
+	WebsiteURL        string
+	TelegramVideoPath string
 }
 
 type SwapEvent struct {
@@ -64,24 +66,13 @@ func (e SwapEvent) DiscordEmbed() *discordgo.MessageEmbed {
 
 func (e SwapEvent) TelegramMessage(chatID int64) tgbotapi.VideoConfig {
 
-	videoConfig := tgbotapi.NewVideo(chatID, tgbotapi.FilePath(e.FilePath()))
+	videoConfig := tgbotapi.NewVideo(chatID, tgbotapi.FilePath(fmt.Sprintf("telegram-files/%s", e.TelegramVideoPath)))
 
 	videoConfig.Caption = e.Caption()
 	videoConfig.ParseMode = "Markdown"
 
 	return videoConfig
 
-}
-
-func (e SwapEvent) FilePath() string {
-	switch {
-	case e.NewHolder:
-		return "telegram-files/SuperSmp4.mp4"
-	case e.USDAmount >= 1000:
-		return "telegram-files/bigbuymp4.mp4"
-	default:
-		return "telegram-files/ExistingHoldersmp4.mp4"
-	}
 }
 
 func (e SwapEvent) Description() string {
@@ -113,25 +104,20 @@ func (e SwapEvent) Description() string {
 }
 
 func (e SwapEvent) Caption() string {
-	return fmt.Sprintf(`%s
-[Buyer](%s)/[Tx](%s)
-Amount: %s %s
-💸 Value: %s ALGO ($%s USD)
-🤲🏽 Holders: %d
-💎 Market Cap: %s ALGO
-💎 Market Cap: $%s 
-📊 [Chart](%s)   💻 [Website](%s)
-	`,
-		e.EmojiText(),
-		utils.AlloAccountURL(e.Sender),
-		utils.AlloGroupURL(e.Group),
-		utils.FormatNumber(e.AbsAmount, 2), e.AssetName,
-		utils.FormatNumber(e.AlgoAmount, 2), utils.FormatNumber(e.USDAmount, 2),
-		e.HolderCount,
-		utils.FormatNumber(e.TelegramBuyInfo.Price*1e12, 0),
-		utils.FormatNumber(e.TelegramBuyInfo.PriceUSD*1e12, 0),
-		e.TelegramBuyInfo.ChartURL, e.TelegramBuyInfo.WebsiteURL,
-	)
+
+	var output strings.Builder
+
+	output.WriteString(fmt.Sprintf("%s\n", e.EmojiText()))
+	output.WriteString(fmt.Sprintf("[Buyer](%s) / [Tx](%s)\n", utils.AlloAccountURL(e.Sender), utils.AlloGroupURL(e.Group)))
+	output.WriteString(fmt.Sprintf("Amount: %s %s\n", utils.FormatNumber(e.AbsAmount, 2), e.AssetName))
+	output.WriteString(fmt.Sprintf("💸 Value: %s ALGO\n", utils.FormatNumber(e.AlgoAmount, 2)))
+	output.WriteString(fmt.Sprintf("💸 Value: $%s USD\n", utils.FormatNumber(e.USDAmount, 2)))
+	output.WriteString(fmt.Sprintf("🤲🏽 Holders: %d\n", e.HolderCount))
+	output.WriteString(fmt.Sprintf("💎 Market Cap: %s ALGO\n", utils.FormatNumber(e.TelegramBuyInfo.Price*1e12, 0)))
+	output.WriteString(fmt.Sprintf("💎 Market Cap: $%s\n", utils.FormatNumber(e.TelegramBuyInfo.PriceUSD*1e12, 0)))
+	output.WriteString(fmt.Sprintf("📊 [Chart](%s)   💻 [Website](%s)\n", e.TelegramBuyInfo.ChartURL, e.TelegramBuyInfo.WebsiteURL))
+
+	return output.String()
 }
 
 func (e SwapEvent) EmojiText() string {
