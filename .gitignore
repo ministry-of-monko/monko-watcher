@@ -1,2 +1,4 @@
 .DS_Store
 config.yaml
+telegram-files/*
+!telegram-files/.gitkeep
