@@ -113,8 +113,8 @@ func (e SwapEvent) Caption() string {
 	output.WriteString(fmt.Sprintf("💸 Value: %s ALGO\n", utils.FormatNumber(e.AlgoAmount, 2)))
 	output.WriteString(fmt.Sprintf("💸 Value: $%s USD\n", utils.FormatNumber(e.USDAmount, 2)))
 	output.WriteString(fmt.Sprintf("🤲🏽 Holders: %d\n", e.HolderCount))
-	output.WriteString(fmt.Sprintf("💎 Market Cap: %s ALGO\n", utils.FormatNumber(e.TelegramBuyInfo.Price*1e12, 0)))
-	output.WriteString(fmt.Sprintf("💎 Market Cap: $%s\n", utils.FormatNumber(e.TelegramBuyInfo.PriceUSD*1e12, 0)))
+	output.WriteString(fmt.Sprintf("💎 Market Cap: %s ALGO\n", utils.FormatNumber(e.TelegramBuyInfo.Price*e.Tokens, 0)))
+	output.WriteString(fmt.Sprintf("💎 Market Cap: $%s\n", utils.FormatNumber(e.TelegramBuyInfo.PriceUSD*e.Tokens, 0)))
 	output.WriteString(fmt.Sprintf("📊 [Chart](%s)   💻 [Website](%s)\n", e.TelegramBuyInfo.ChartURL, e.TelegramBuyInfo.WebsiteURL))
 
 	return output.String()
