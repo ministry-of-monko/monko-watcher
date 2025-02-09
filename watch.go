@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"algorillas.com/monko/events"
 	"algorillas.com/monko/internal"
-	"github.com/bwmarrin/discordgo"
 )
 
 func main() {
@@ -24,6 +24,7 @@ func main() {
 	for {
 
 		watcher.CalcPrices(start, round)
+		watcher.UpdateHolderCount(start, round)
 
 		_, err := watcher.AlgodClient.StatusAfterBlock(round).Do(context.Background())
 		if err != nil {
@@ -38,17 +39,34 @@ func main() {
 		}
 
 		reports := blockAnalyzer.AnalyzeBlock(info)
-		embeds := []*discordgo.MessageEmbed{}
+		discordEvents := []events.Event{}
+		telegramEvents := []events.Event{}
 
 		for _, report := range reports {
-			embed := watcher.GetDiscordEmbedFromReport(report)
+			event := watcher.Event(report)
 
-			if embed != nil {
-				embeds = append(embeds, embed)
+			if watcher.ShouldFilterEvent(event) {
+				continue
 			}
+
+			if watcher.Config.HasDiscordAction(event.EventAction()) {
+				discordEvents = append(discordEvents, event)
+			}
+
+			if watcher.Config.HasTelegramAction(event.EventAction()) {
+				telegramEvents = append(telegramEvents, event)
+			}
+
 		}
 
-		watcher.SendMessages(embeds)
+		if len(discordEvents) > 0 {
+			watcher.SendDiscordMessages(discordEvents)
+		}
+
+		if len(telegramEvents) > 0 {
+			watcher.SendTelegramMessages(telegramEvents)
+		}
+
 		round++
 	}
 }
