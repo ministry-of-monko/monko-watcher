@@ -250,6 +250,7 @@ func (w *Watcher) Event(report *AssetReport) events.Event {
 					switch newHolder {
 					case true:
 						videoPath = w.Config.Telegram.Videos.NewHolder
+						w.HolderCount++
 					case false:
 						videoPath = w.Config.Telegram.Videos.ExistingHolder
 					}
