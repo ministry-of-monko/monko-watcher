@@ -105,15 +105,19 @@ func (e SwapEvent) Description() string {
 
 func (e SwapEvent) Caption() string {
 
+	algoAmount := e.AlgoAmount
+	if e.ToAssetID == 0 {
+		algoAmount = e.ToAbsAmount
+	}
+
 	var output strings.Builder
 
 	output.WriteString(fmt.Sprintf("%s\n", e.EmojiText()))
 	output.WriteString(fmt.Sprintf("[Buyer](%s) / [Tx](%s)\n", utils.AlloAccountURL(e.Sender), utils.AlloGroupURL(e.Group)))
 	output.WriteString(fmt.Sprintf("Amount: %s %s\n", utils.FormatNumber(e.AbsAmount, 2), e.AssetName))
-	output.WriteString(fmt.Sprintf("💸 Value: %s ALGO\n", utils.FormatNumber(e.AlgoAmount, 2)))
+	output.WriteString(fmt.Sprintf("💸 Value: %s ALGO\n", utils.FormatNumber(algoAmount, 2)))
 	output.WriteString(fmt.Sprintf("💸 Value: $%s USD\n", utils.FormatNumber(e.USDAmount, 2)))
 	output.WriteString(fmt.Sprintf("🤲🏽 Holders: %d\n", e.HolderCount))
-	output.WriteString(fmt.Sprintf("💎 Market Cap: %s ALGO\n", utils.FormatNumber(e.TelegramBuyInfo.Price*e.Tokens, 0)))
 	output.WriteString(fmt.Sprintf("💎 Market Cap: $%s\n", utils.FormatNumber(e.TelegramBuyInfo.PriceUSD*e.Tokens, 0)))
 	output.WriteString(fmt.Sprintf("📊 [Chart](%s)   💻 [Website](%s)\n", e.TelegramBuyInfo.ChartURL, e.TelegramBuyInfo.WebsiteURL))
 

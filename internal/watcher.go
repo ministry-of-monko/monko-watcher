@@ -91,6 +91,7 @@ func (w *Watcher) GetAssetInfo(assetID uint64) AssetInfo {
 
 	info, err := w.AlgodClient.GetAssetByID(assetID).Do(context.Background())
 	if err != nil {
+		fmt.Printf("Could not find asset %d", assetID)
 		panic(err)
 	}
 
